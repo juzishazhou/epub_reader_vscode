@@ -1,6 +1,6 @@
 {
-  "name": "epub-reader",
-  "displayName": "EPUB Reader",
+  "name": "epub-view",
+  "displayName": "EPUB View",
   "description": "在 VS Code 里直接阅读 EPUB 电子书：目录导航、全文搜索、书签、阅读进度记忆，零运行时依赖。",
   "version": "0.1.0",
   "publisher": "ssfg",
@@ -50,7 +50,7 @@
     "customEditors": [
       {
         "viewType": "epubReader.reader",
-        "displayName": "EPUB Reader",
+        "displayName": "EPUB View",
         "selector": [
           {
             "filenamePattern": "*.epub"
@@ -62,18 +62,18 @@
     "commands": [
       {
         "command": "epubReader.open",
-        "title": "用 EPUB Reader 打开",
-        "category": "EPUB Reader"
+        "title": "用 EPUB View 打开",
+        "category": "EPUB View"
       },
       {
         "command": "epubReader.continueReading",
         "title": "继续阅读…",
-        "category": "EPUB Reader"
+        "category": "EPUB View"
       },
       {
         "command": "epubReader.clearHistory",
         "title": "清除阅读记录与书签",
-        "category": "EPUB Reader"
+        "category": "EPUB View"
       }
     ],
     "menus": {
@@ -86,7 +86,7 @@
       ]
     },
     "configuration": {
-      "title": "EPUB Reader",
+      "title": "EPUB View",
       "properties": {
         "epubReader.fontSize": {
           "type": "number",

@@ -30,14 +30,14 @@ jobs:
       - name: Package VSIX
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          npx --yes @vscode/vsce package --no-dependencies -o "epub-reader-${VERSION}.vsix"
+          npx --yes @vscode/vsce package --no-dependencies -o "epub-view-${VERSION}.vsix"
 
       # Skipped automatically when the repository has no VSCE_PAT secret yet.
       - name: Publish to Marketplace
         if: env.VSCE_PAT != ''
-        run: npx --yes @vscode/vsce publish --no-dependencies --packagePath epub-reader-*.vsix
+        run: npx --yes @vscode/vsce publish --no-dependencies --packagePath epub-view-*.vsix
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" epub-reader-*.vsix --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" epub-view-*.vsix --generate-notes

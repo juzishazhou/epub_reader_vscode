@@ -48,15 +48,15 @@ git push --follow-tags
 
 ```powershell
 npm run verify                       # 编译 + 契约检查 + 全部测试
-npm run vsix                         # 生成 epub-reader-x.y.z.vsix
+npm run vsix                         # 生成 epub-view-x.y.z.vsix
 npx --yes @vscode/vsce publish --no-dependencies   # 需要 VSCE_PAT 或已 vsce login
 ```
 
 只想发个测试包、不进 Marketplace：
 
 ```powershell
-npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o epub-reader-0.1.0.vsix
-code --install-extension epub-reader-0.1.0.vsix --force
+npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o epub-view-0.1.0.vsix
+code --install-extension epub-view-0.1.0.vsix --force
 ```
 
 ## 首版检查清单

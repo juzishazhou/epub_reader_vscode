@@ -103,7 +103,7 @@ export class ReaderSession {
         return;
       case "clientError":
         if (this.clientErrorCount++ < 3) {
-          void vscode.window.showWarningMessage(`EPUB Reader: ${message.message}`);
+          void vscode.window.showWarningMessage(`EPUB View: ${message.message}`);
         }
         return;
       default:
@@ -295,7 +295,7 @@ export class ReaderSession {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: "EPUB Reader：建立全文索引",
+          title: "EPUB View：建立全文索引",
           cancellable: false,
         },
         async (progress) => {

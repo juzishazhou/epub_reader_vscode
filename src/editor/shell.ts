@@ -27,7 +27,7 @@ function documentHead(cspSource: string, scriptNonce: string, extra: string): st
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy(cspSource, scriptNonce)}">
-<title>EPUB Reader</title>
+<title>EPUB View</title>
 ${extra}
 </head>`;
 }

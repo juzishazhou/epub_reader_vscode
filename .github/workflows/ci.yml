@@ -31,10 +31,10 @@ jobs:
         run: npm test
 
       - name: Package (sanity check)
-        run: npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o /tmp/epub-reader.vsix
+        run: npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o /tmp/epub-view.vsix
 
       - uses: actions/upload-artifact@v4
         with:
           name: vsix
-          path: /tmp/epub-reader.vsix
+          path: /tmp/epub-view.vsix
           if-no-files-found: error

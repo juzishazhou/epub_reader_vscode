@@ -1,9 +1,9 @@
-# EPUB Reader
+# EPUB View
 
 在 VS Code 里直接读 EPUB 电子书 —— 双击 `.epub` 就能打开，不用切到别的阅读器。零运行时依赖，只用 Node 标准库解析 ZIP 与 XHTML。
 
-[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/ssfg.epub-reader?label=marketplace&color=0078d4)](https://marketplace.visualstudio.com/items?itemName=ssfg.epub-reader)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/ssfg.epub-reader)](https://marketplace.visualstudio.com/items?itemName=ssfg.epub-reader)
+[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/ssfg.epub-view?label=marketplace&color=0078d4)](https://marketplace.visualstudio.com/items?itemName=ssfg.epub-view)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/ssfg.epub-view)](https://marketplace.visualstudio.com/items?itemName=ssfg.epub-view)
 [![CI](https://github.com/juzishazhou/epub_reader_vscode/actions/workflows/ci.yml/badge.svg)](https://github.com/juzishazhou/epub_reader_vscode/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/juzishazhou/epub_reader_vscode)](LICENSE)
 
@@ -13,7 +13,7 @@
 
 | 能力 | 说明 |
 | --- | --- |
-| 双击即读 | 注册 `.epub` 自定义编辑器，资源管理器右键也能「用 EPUB Reader 打开」 |
+| 双击即读 | 注册 `.epub` 自定义编辑器，资源管理器右键也能「用 EPUB View 打开」 |
 | 目录导航 | EPUB 3 的 NAV 与 EPUB 2 的 NCX 都支持，多级目录树 + 筛选框，自动定位当前章 |
 | 全书搜索 | 跨全部章节搜索，带上下文片段、命中数与耗时，点击跳转并高亮命中处 |
 | 书签 | 在当前位置加书签（自动摘录当前段落），列表可跳转、删除 |
@@ -27,23 +27,23 @@
 
 ## 安装
 
-**Marketplace**：在 VS Code 扩展面板搜索 `EPUB Reader`，或
+**Marketplace**：在 VS Code 扩展面板搜索 `EPUB View`，或
 
 ```powershell
-code --install-extension ssfg.epub-reader
+code --install-extension ssfg.epub-view
 ```
 
 **手动安装 VSIX**：从 [Releases](https://github.com/juzishazhou/epub_reader_vscode/releases) 下载 `.vsix` 后
 
 ```powershell
-code --install-extension epub-reader-0.1.0.vsix
+code --install-extension epub-view-0.1.0.vsix
 ```
 
 ## 打开一本书
 
 1. 在资源管理器里**双击**任意 `.epub`；
-2. 或者右键 →「打开方式...」→「EPUB Reader」；
-3. 或者命令面板执行 `EPUB Reader: 用 EPUB Reader 打开`。
+2. 或者右键 →「打开方式...」→「EPUB View」；
+3. 或者命令面板执行 `EPUB View: 用 EPUB View 打开`。
 
 > **和别的 epub 扩展共存**：如果装了多个能打开 `.epub` 的扩展，双击时可能被对方接管。用右键「打开方式...」显式选择，或在用户设置里钉死：
 > ```json
@@ -88,7 +88,7 @@ code --install-extension epub-reader-0.1.0.vsix
 目录项指向的不是 spine 里的正文（有些书会指向单独的版权页或封面页），此时会提示并跳过。
 
 **进度和书签存在哪？**
-存在 VS Code 的 `globalState` 里（`epubReader.progress` / `epubReader.bookmarks` / `epubReader.recents`），以**文件路径**哈希为键，所以重新下载同名书不会丢进度。解压出的图片样式缓存在扩展 `globalStorage/books/` 下，两周未访问会自动清理。想完全重置：命令面板执行 `EPUB Reader: 清除阅读记录与书签`，再删掉 `globalStorage/books` 目录。
+存在 VS Code 的 `globalState` 里（`epubReader.progress` / `epubReader.bookmarks` / `epubReader.recents`），以**文件路径**哈希为键，所以重新下载同名书不会丢进度。解压出的图片样式缓存在扩展 `globalStorage/books/` 下，两周未访问会自动清理。想完全重置：命令面板执行 `EPUB View: 清除阅读记录与书签`，再删掉 `globalStorage/books` 目录。
 
 **排版为什么和手机阅读器不完全一样？**
 正文渲染在 Shadow DOM 里，书的 CSS 中 `html` / `body` / `:root` 选择器不会命中，这部分样式由阅读器接管——这正是它能稳定跟随 VS Code 主题、且书的样式不会污染编辑器界面的原因。其余选择器（类名、标签、图片、表格等）都按书的原样生效。

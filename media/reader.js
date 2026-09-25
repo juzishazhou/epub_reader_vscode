@@ -1,5 +1,5 @@
 /*
- * EPUB Reader webview client.
+ * EPUB View webview client.
  *
  * The host owns parsing and sanitizing; this file owns presentation: the
  * drawer, the reading surface (a shadow root, so book styles stay contained),
