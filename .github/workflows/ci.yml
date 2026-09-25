@@ -33,7 +33,7 @@ jobs:
       - name: Package (sanity check)
         run: npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o /tmp/epub-view.vsix
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: /tmp/epub-view.vsix
