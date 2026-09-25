@@ -2,8 +2,7 @@
 
 在 VS Code 里直接读 EPUB 电子书 —— 双击 `.epub` 就能打开，不用切到别的阅读器。零运行时依赖，只用 Node 标准库解析 ZIP 与 XHTML。
 
-[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/ssfg.epub-view?label=marketplace&color=0078d4)](https://marketplace.visualstudio.com/items?itemName=ssfg.epub-view)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/ssfg.epub-view)](https://marketplace.visualstudio.com/items?itemName=ssfg.epub-view)
+[![VS Marketplace](https://img.shields.io/badge/VS%20Marketplace-EPUB%20View-0078d4)](https://marketplace.visualstudio.com/items?itemName=ssfg.epub-view)
 [![CI](https://github.com/juzishazhou/epub_reader_vscode/actions/workflows/ci.yml/badge.svg)](https://github.com/juzishazhou/epub_reader_vscode/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/juzishazhou/epub_reader_vscode)](LICENSE)
 
@@ -36,7 +35,7 @@ code --install-extension ssfg.epub-view
 **手动安装 VSIX**：从 [Releases](https://github.com/juzishazhou/epub_reader_vscode/releases) 下载 `.vsix` 后
 
 ```powershell
-code --install-extension epub-view-0.1.0.vsix
+code --install-extension epub-view-0.1.1.vsix
 ```
 
 ## 打开一本书

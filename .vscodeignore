@@ -16,3 +16,9 @@ out/src/test/**
 .npmrc
 package-lock.json
 node_modules/**
+
+# README 里的图片走 GitHub 绝对地址，VSIX 内再存一份纯属重复。
+docs/**
+DEVELOPMENT.md
+RELEASING.md
+tsconfig.json

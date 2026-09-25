@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const { openPanel } = require("../out/src/test/helpers/hostHarness.js");
 const { createEpub3 } = require("../out/src/test/helpers/fixtures.js");
+const { findSampleEpub } = require("../out/src/test/helpers/sample.js");
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(here, "..");
@@ -137,10 +138,10 @@ async function capture(shellHtml, chapterIndex, searchQuery) {
 
 function realBookBytes() {
   const candidates = [
-    path.resolve(projectRoot, "..", "玄鉴仙族.epub"),
+    // 真实书籍由 findSampleEpub() 提供：EPUB_READER_SAMPLE 或 fixtures/ 下的任意 .epub
     path.resolve(projectRoot, "fixtures", "sample.epub"),
   ];
-  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  const found = findSampleEpub() ?? candidates.find((candidate) => fs.existsSync(candidate));
   if (found) {
     console.log(`[shot] 使用真实电子书：${path.relative(projectRoot, found)}`);
     return fs.readFileSync(found);
@@ -167,7 +168,8 @@ function shoot(browser, htmlFile, pngFile) {
     "--no-first-run",
     "--disable-extensions",
     "--disable-background-networking",
-    "--force-device-scale-factor=2",
+    // 1x keeps the PNGs about four times smaller; the Marketplace caps README image width anyway.
+    "--force-device-scale-factor=1",
     "--window-size=1280,800",
     "--virtual-time-budget=6000",
     `--user-data-dir=${chromeDataDir}`,

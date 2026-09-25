@@ -2,7 +2,7 @@
   "name": "epub-view",
   "displayName": "EPUB View",
   "description": "在 VS Code 里直接阅读 EPUB 电子书：目录导航、全文搜索、书签、阅读进度记忆，零运行时依赖。",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "ssfg",
   "author": {
     "name": "juzishazhou",

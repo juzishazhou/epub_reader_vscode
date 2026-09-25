@@ -55,8 +55,8 @@ npx --yes @vscode/vsce publish --no-dependencies   # 需要 VSCE_PAT 或已 vsce
 只想发个测试包、不进 Marketplace：
 
 ```powershell
-npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o epub-view-0.1.0.vsix
-code --install-extension epub-view-0.1.0.vsix --force
+npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o epub-view-0.1.1.vsix
+code --install-extension epub-view-0.1.1.vsix --force
 ```
 
 ## 首版检查清单

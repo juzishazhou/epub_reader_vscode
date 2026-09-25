@@ -3,6 +3,14 @@
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.1] - 2026-09-25
+
+### 变更
+
+- 安装包从 1.03 MB 降到约 0.17 MB：README 里的截图改为直接引用仓库文件，不再在 VSIX 内重复打包；开发文档与 tsconfig 也不再随包发布。
+- 仓库内截图按 1× 重新生成（原先 2×，合计 1 MB），列表页加载更快。
+- 修正 README 顶部两个已失效的 Marketplace 徽章（shields.io 已退役该系列数据徽章），改为静态徽章。
+
 ## [0.1.0] - 2026-09-25
 
 首个公开版本。
