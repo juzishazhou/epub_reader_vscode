@@ -1,18 +1,18 @@
 import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import { findSampleEpub, requireSampleEpub } from "./helpers/sample";
 import { test } from "node:test";
 import { openEpub } from "../epub/book";
 import { chapterText, renderChapter } from "../epub/render";
 import { SearchIndex } from "../epub/search";
 
 /** The sample book lives next to the extension checkout, not inside it. */
-const REAL_BOOK = path.resolve(__dirname, "../../../../玄鉴仙族.epub");
-const available = fs.existsSync(REAL_BOOK);
-const skip = available ? false : `示例电子书不存在：${REAL_BOOK}`;
+const REAL_BOOK = findSampleEpub();
+const available = REAL_BOOK !== undefined;
+const skip = available ? false : "未提供示例电子书（设置 EPUB_READER_SAMPLE，或把 EPUB 放进 fixtures/）";
 
 test("opens and indexes a real ~10MB, 1600+ chapter epub", { skip }, () => {
-  const data = fs.readFileSync(REAL_BOOK);
+  const data = fs.readFileSync(requireSampleEpub());
 
   const openStarted = Date.now();
   const book = openEpub(data);
@@ -61,7 +61,7 @@ test("opens and indexes a real ~10MB, 1600+ chapter epub", { skip }, () => {
 });
 
 test("opens a real epub within a reasonable time budget", { skip }, () => {
-  const data = fs.readFileSync(REAL_BOOK);
+  const data = fs.readFileSync(requireSampleEpub());
   const started = Date.now();
   openEpub(data);
   assert.ok(Date.now() - started < 5000, "opening a book must not block for seconds");

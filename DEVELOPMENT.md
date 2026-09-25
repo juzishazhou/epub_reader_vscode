@@ -49,7 +49,7 @@ scripts/
 
 ## 渲染流水线
 
-1. `ZipArchive.open()` 只读中央目录，章节与资源按需解压 —— 10 MB 的书打开约 76 ms；
+1. `ZipArchive.open()` 只读中央目录，章节与资源按需解压 —— 10 MB 的书打开约 0.1–0.2 秒；
 2. `openEpub()` 解析 OPF，得到元数据、spine 顺序与目录树，每个目录项都映射到 spine 序号；
 3. 打开某章时 `renderChapter()` 把 XHTML 解析成节点树：丢弃 `script` / `iframe` / `head` 等，剔除事件属性，
    把 `img@src`、`image@xlink:href`、`a@href`、内联 `style` 的 `url()` 改写成 webview 可访问的 URI，
@@ -104,8 +104,14 @@ npm run verify    # 上面的基础上再加编译与契约检查
 | `host.test.ts` | 假 `vscode` 模块里跑真实扩展：`ready → init → chapter → 搜索 → 高亮 → 书签 → 进度落盘 → 重开续读` |
 | `webview.test.ts` | jsdom 里加载真实 shell HTML 与真实 `reader.js`，验证目录、Shadow DOM 正文、链接点击、快捷键、搜索防抖、书签增删、主题与字号、错误页 |
 
-`realbook.test.ts` 与 `host.test.ts` 的最后一个用例会在 `../玄鉴仙族.epub` 存在时运行，断言
-1660 章、目录标题与首章文本，并打印打开与建索引耗时。
+真实书籍用例（`realbook.test.ts` 与 `host.test.ts` 最后一个）默认**跳过**：仓库不附带 EPUB。想跑它们，
+把任意 EPUB 放进 `fixtures/`，或设置环境变量指向一本书：
+
+```powershell
+$env:EPUB_READER_SAMPLE = "D:\books\some-book.epub"; npm test
+```
+
+这些用例会断言章节数、目录标题与首章文本，并打印打开与建索引耗时（9.9 MB / 1660 章的示例书：打开 0.1–0.2 秒，建索引 0.3–0.9 秒）。
 
 **在受限沙箱里**（禁止子进程管道）`node --test` 会因无法 spawn 而报 `EPERM`，改用
 `npm run test:single`（`--experimental-test-isolation=none`，单进程跑完）。

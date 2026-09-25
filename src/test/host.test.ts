@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import { findSampleEpub, requireSampleEpub } from "./helpers/sample";
 import { test } from "node:test";
 import type { BookmarkDto, ChapterPayload, ProgressDto, SearchResultsDto } from "../editor/protocol";
 import type { TocEntry } from "../epub/book";
@@ -188,12 +188,12 @@ test("resumes at the stored position on the next visit", async () => {
   second.panel.dispose();
 });
 
-const REAL_BOOK = path.resolve(__dirname, "../../../../玄鉴仙族.epub");
-const realSkip = fs.existsSync(REAL_BOOK) ? false : `示例电子书不存在：${REAL_BOOK}`;
+const REAL_BOOK = findSampleEpub();
+const realSkip = REAL_BOOK ? false : "未提供示例电子书（设置 EPUB_READER_SAMPLE，或把 EPUB 放进 fixtures/）";
 
 test("serves a real 1600+ chapter book through the editor provider", { skip: realSkip }, async () => {
   resetHostState();
-  const { panel } = await openPanel("D:/books/real.epub", fs.readFileSync(REAL_BOOK));
+  const { panel } = await openPanel("D:/books/real.epub", fs.readFileSync(requireSampleEpub()));
   const mark = panel.webview.count();
   await panel.webview.send({ type: "ready" });
 
