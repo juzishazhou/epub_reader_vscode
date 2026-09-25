@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用问题先看 README
+    url: https://github.com/juzishazhou/epub_reader_vscode#常见问题
+    about: 常见问题（乱码、打不开、和其它 epub 扩展抢默认编辑器、进度存哪）都有说明

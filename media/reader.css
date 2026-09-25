@@ -1,0 +1,550 @@
+/*
+ * Reader shell styling. Everything is expressed with VS Code theme variables so
+ * the extension looks native in light, dark and high contrast themes.
+ */
+
+:root {
+  --reader-drawer-width: 300px;
+  --reader-toolbar-height: 40px;
+  --reader-status-height: 24px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+ * The `hidden` attribute only sets `display: none` in the UA stylesheet, so any
+ * author rule that declares `display` on the same element silently wins and the
+ * element stays visible. The overlays below set `display: flex`, which is
+ * exactly that trap, so the guard has to be explicit.
+ */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  overflow: hidden;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.app {
+  display: grid;
+  height: 100vh;
+  grid-template-columns: 0 minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "toolbar toolbar"
+    "drawer content"
+    "status status";
+  transition: grid-template-columns 0.16s ease;
+}
+
+.app[data-drawer-open="true"] {
+  grid-template-columns: var(--reader-drawer-width) minmax(0, 1fr);
+}
+
+/* ---------------------------------------------------------------- toolbar */
+
+.toolbar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--reader-toolbar-height);
+  padding: 0 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+.icon-btn {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+
+.icon-btn:focus-visible,
+.tab:focus-visible,
+.toc-item:focus-visible,
+.link-item:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.title-block {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.25;
+  padding: 0 4px;
+}
+
+.book-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chapter-title {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.search-input {
+  width: 150px;
+  flex: 0 1 150px;
+  min-width: 72px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+}
+
+.search-input::placeholder,
+.toc-filter::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+.theme-select {
+  height: 24px;
+  border: 1px solid var(--vscode-dropdown-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-dropdown-background, var(--vscode-input-background));
+  color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+  padding: 0 2px;
+}
+
+/* ----------------------------------------------------------------- drawer */
+
+.drawer {
+  grid-area: drawer;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+.drawer-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+
+.tab {
+  flex: 1;
+  padding: 7px 4px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+}
+
+.tab.is-active {
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--vscode-focusBorder);
+}
+
+.drawer-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.pane {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pane.is-active {
+  display: flex;
+}
+
+.toc-filter {
+  margin: 6px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+}
+
+.toc-list,
+.bookmark-list,
+.search-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 12px;
+}
+
+.toc-item,
+.link-item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toc-item:hover,
+.link-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.toc-item.is-active {
+  border-left-color: var(--vscode-focusBorder);
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+  font-weight: 600;
+}
+
+.toc-item[data-level="2"] {
+  padding-left: 20px;
+}
+
+.toc-item[data-level="3"] {
+  padding-left: 34px;
+}
+
+.toc-item[data-level="4"],
+.toc-item[data-level="5"] {
+  padding-left: 48px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pane-hint {
+  padding: 10px 10px 4px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.bookmark-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.18));
+}
+
+.bookmark-row .link-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.bookmark-label {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookmark-excerpt {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.86em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookmark-time {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.78em;
+}
+
+.row-delete {
+  flex: 0 0 auto;
+  width: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+
+.row-delete:hover {
+  color: var(--vscode-errorForeground, #f14c4c);
+  background: var(--vscode-list-hoverBackground);
+}
+
+.search-hit {
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.18));
+}
+
+.search-hit-title {
+  color: var(--vscode-textLink-foreground);
+  font-size: 0.85em;
+}
+
+.search-hit-snippet {
+  color: var(--vscode-foreground);
+  font-size: 0.9em;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.search-hit-snippet mark {
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+  color: inherit;
+}
+
+.drawer-footer {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+
+.cover {
+  width: 44px;
+  height: 62px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+.book-meta {
+  min-width: 0;
+  font-size: 0.85em;
+}
+
+.meta-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.meta-author,
+.meta-extra {
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------- content */
+
+.content {
+  grid-area: content;
+  position: relative;
+  min-width: 0;
+  background: var(--vscode-editor-background);
+}
+
+.reading-surface {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--vscode-editor-background);
+  outline: none;
+}
+
+.loading,
+.error-box {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editor-background);
+}
+
+.error-box {
+  color: var(--vscode-errorForeground, #f14c4c);
+  white-space: pre-wrap;
+}
+
+/* --------------------------------------------------------------- statusbar */
+
+.statusbar {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--reader-status-height);
+  padding: 0 10px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+}
+
+.progress-track {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.3));
+  overflow: hidden;
+}
+
+.progress-fill {
+  width: 0;
+  height: 100%;
+  background: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+  transition: width 0.15s linear;
+}
+
+.status-text {
+  display: flex;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ toast */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  max-width: 70vw;
+  padding: 6px 14px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.4));
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.28);
+  z-index: 30;
+}
+
+.toast[data-level="warn"] {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.toast[data-level="error"] {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+/* ------------------------------------------------------------ help overlay */
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 40;
+}
+
+.help-card {
+  width: min(460px, 88vw);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 18px 22px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.4));
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.help-card h2 {
+  margin: 0 0 12px;
+  font-size: 1.05em;
+}
+
+.help-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 0 0 16px;
+}
+
+.help-card dt {
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-textLink-foreground);
+  white-space: nowrap;
+}
+
+.help-card dd {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.primary-btn {
+  padding: 5px 16px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+}
+
+.primary-btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+/*
+ * Reading next to code usually means a narrow editor group. The toolbar is a
+ * single row, so the least used controls give up their space first instead of
+ * letting the row overflow.
+ */
+@media (max-width: 900px) {
+  .theme-select {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .search-input {
+    flex-basis: 96px;
+  }
+
+  .toolbar-right {
+    gap: 2px;
+  }
+}

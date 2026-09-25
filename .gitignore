@@ -1,0 +1,11 @@
+node_modules/
+out/
+preview/
+*.vsix
+.vscode-test/
+.chrome-profile/
+*.tsbuildinfo
+*.log
+.npmrc
+.DS_Store
+Thumbs.db

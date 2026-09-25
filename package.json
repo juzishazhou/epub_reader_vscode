@@ -1,0 +1,152 @@
+{
+  "name": "epub-reader",
+  "displayName": "EPUB Reader",
+  "description": "在 VS Code 里直接阅读 EPUB 电子书：目录导航、全文搜索、书签、阅读进度记忆，零运行时依赖。",
+  "version": "0.1.0",
+  "publisher": "ssfg",
+  "author": {
+    "name": "juzishazhou",
+    "url": "https://github.com/juzishazhou"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juzishazhou/epub_reader_vscode.git"
+  },
+  "homepage": "https://github.com/juzishazhou/epub_reader_vscode#readme",
+  "bugs": {
+    "url": "https://github.com/juzishazhou/epub_reader_vscode/issues"
+  },
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1f2430",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "epub",
+    "ebook",
+    "e-book",
+    "reader",
+    "book",
+    "novel",
+    "阅读",
+    "电子书",
+    "小说"
+  ],
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "onCustomEditor:epubReader.reader",
+    "onCommand:epubReader.open",
+    "onCommand:epubReader.continueReading",
+    "onCommand:epubReader.clearHistory"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "epubReader.reader",
+        "displayName": "EPUB Reader",
+        "selector": [
+          {
+            "filenamePattern": "*.epub"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "epubReader.open",
+        "title": "用 EPUB Reader 打开",
+        "category": "EPUB Reader"
+      },
+      {
+        "command": "epubReader.continueReading",
+        "title": "继续阅读…",
+        "category": "EPUB Reader"
+      },
+      {
+        "command": "epubReader.clearHistory",
+        "title": "清除阅读记录与书签",
+        "category": "EPUB Reader"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "epubReader.open",
+          "when": "resourceExtname == .epub",
+          "group": "navigation@9"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "EPUB Reader",
+      "properties": {
+        "epubReader.fontSize": {
+          "type": "number",
+          "default": 17,
+          "minimum": 12,
+          "maximum": 40,
+          "description": "正文字号（px）。"
+        },
+        "epubReader.lineHeight": {
+          "type": "number",
+          "default": 1.75,
+          "minimum": 1.2,
+          "maximum": 3,
+          "description": "行高倍数。"
+        },
+        "epubReader.maxWidth": {
+          "type": "number",
+          "default": 46,
+          "minimum": 24,
+          "maximum": 120,
+          "description": "正文最大宽度（rem），用于限制行长。"
+        },
+        "epubReader.pageTheme": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "light",
+            "sepia",
+            "dark"
+          ],
+          "default": "auto",
+          "description": "正文配色：auto 跟随 VS Code 主题，或强制 light / sepia / dark。"
+        },
+        "epubReader.rememberProgress": {
+          "type": "boolean",
+          "default": true,
+          "description": "记住每本书上次读到的章节与位置。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "typecheck": "tsc -p ./ --noEmit",
+    "test": "tsc -p ./ && node --test \"out/src/test/*.test.js\"",
+    "test:single": "node --experimental-test-isolation=none --test \"out/src/test/*.test.js\"",
+    "check:webview": "node scripts/check-webview.mjs",
+    "icon": "node scripts/make-icon.mjs",
+    "preview": "tsc -p ./ && node scripts/preview.mjs",
+    "screenshot": "tsc -p ./ && node scripts/screenshot.mjs",
+    "verify": "npm run compile && npm run check:webview && npm test",
+    "vsix": "npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository",
+    "publish:vsce": "npx --yes @vscode/vsce publish --no-dependencies",
+    "vscode:prepublish": "tsc -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/vscode": "^1.85.0",
+    "jsdom": "^30.1.1",
+    "typescript": "^5.7.2"
+  }
+}

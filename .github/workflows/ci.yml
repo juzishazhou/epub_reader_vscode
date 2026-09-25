@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Check webview contract
+        run: npm run check:webview
+
+      - name: Test
+        run: npm test
+
+      - name: Package (sanity check)
+        run: npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o /tmp/epub-reader.vsix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: /tmp/epub-reader.vsix
+          if-no-files-found: error

@@ -1,0 +1,11 @@
+# Keep the repository LF-only so Windows checkouts, CI (Linux) and the packaged
+# extension all agree byte for byte.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.vsix binary
+*.epub binary
