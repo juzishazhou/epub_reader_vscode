@@ -148,7 +148,14 @@ const GUESSED_MEDIA_TYPES: Record<string, string> = {
 
 /** Parse an EPUB file from its raw bytes. */
 export function openEpub(data: Buffer, fallbackTitle = "未命名书籍"): EpubBook {
-  const zip = ZipArchive.open(data);
+  return openEpubFromArchive(ZipArchive.open(data), fallbackTitle);
+}
+
+/**
+ * Same, but on an already parsed archive. `EpubDocument` uses this to re-parse
+ * the book after text overrides change, without re-opening the buffer.
+ */
+export function openEpubFromArchive(zip: ZipArchive, fallbackTitle = "未命名书籍"): EpubBook {
   const opfPath = findOpfPath(zip);
   if (!opfPath) {
     throw new Error("没有在 META-INF/container.xml 中找到 OPF 包文件。");

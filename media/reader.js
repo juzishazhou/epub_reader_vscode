@@ -26,6 +26,7 @@
     bookmarks: [],
     settings: Object.assign({}, DEFAULT_SETTINGS),
     chapterIndex: 0,
+    chapterPath: "",
     chapterTitle: "",
     chapterBody: "",
     chapterCss: [],
@@ -41,7 +42,29 @@
     composing: false,
     progressTimer: null,
     progressSentAt: 0,
+    /* edit mode */
+    editMode: false,
+    /** False when the user turned `epubReader.enableEditing` off. */
+    editingEnabled: true,
+    /** "visual" (editable chapter render) or "source" (textarea). */
+    editKind: "visual",
+    editPath: "",
+    editEntries: [],
+    editVisualDirty: false,
+    editSourceDirty: false,
+    editApplied: false,
+    editApplyTimer: null,
+    editObserver: null,
+    editGuardAction: null,
+    editCaret: null,
+    editSourceSelection: null,
+    /** Reading position when edit mode took over, restored on the way out. */
+    viewChapterIndex: null,
+    viewScrollRatio: null,
   };
+
+  /** How long typing pauses before the change is written into the document. */
+  const EDIT_APPLY_DELAY = 900;
 
   const dom = {};
   /** Shadow root holding the reading surface, so EPUB css cannot leak out. */
@@ -114,9 +137,20 @@
     dom.progressFill = $("progress-fill");
     dom.statusChapter = $("status-chapter");
     dom.statusPercent = $("status-percent");
+    dom.editButton = $("btn-edit");
+    dom.editBar = $("edit-bar");
+    dom.editStatus = $("edit-status");
+    dom.editVisualBtn = $("btn-edit-visual");
+    dom.editSourceBtn = $("btn-edit-source");
+    dom.editApply = $("btn-edit-apply");
+    dom.editRevert = $("btn-edit-revert");
+    dom.editExit = $("btn-edit-exit");
+    dom.sourceEditor = $("source-editor");
+    dom.editGuard = $("edit-guard");
 
     bindToolbar();
     bindDrawer();
+    bindEdit();
     bindKeyboard();
 
     // In a narrow editor group the drawer would eat the whole reading area.
@@ -183,6 +217,28 @@
     dom.tocFilter.addEventListener("input", renderToc);
   }
 
+  function bindEdit() {
+    dom.editButton.addEventListener("click", () => {
+      if (state.editMode) {
+        requestExitEdit();
+      } else {
+        requestEnterEdit(false);
+      }
+    });
+    dom.editVisualBtn.addEventListener("click", () => requestEditKind("visual"));
+    dom.editSourceBtn.addEventListener("click", () => requestEditKind("source"));
+    dom.editApply.addEventListener("click", () => flushEdit());
+    dom.editRevert.addEventListener("click", () => revertEditFile());
+    dom.editExit.addEventListener("click", () => requestExitEdit());
+    dom.sourceEditor.addEventListener("input", () => {
+      state.editSourceDirty = true;
+      updateEditStatus();
+      scheduleEditApply();
+    });
+    $("guard-discard").addEventListener("click", () => resolveEditGuard(true));
+    $("guard-stay").addEventListener("click", () => resolveEditGuard(false));
+  }
+
   function bindKeyboard() {
     document.addEventListener("keydown", onKeyDown);
   }
@@ -221,6 +277,16 @@
       case "fatal":
         showFatal(message.message);
         break;
+      case "editEntries":
+        applyEditEntries(message);
+        break;
+      case "editContent":
+        applyEditContent(message);
+        break;
+      case "editApplied":
+        state.editApplied = message.dirty === true;
+        updateEditStatus();
+        break;
       default:
         break;
     }
@@ -234,6 +300,11 @@
     state.chapterCount = message.book ? message.book.chapterCount : 0;
     state.flatToc = flattenToc(state.toc);
     state.chapterIndex = clamp(message.startChapter, 0, Math.max(0, state.chapterCount - 1));
+    state.editingEnabled = message.editingEnabled !== false;
+    dom.editButton.disabled = !state.editingEnabled;
+    dom.editButton.title = state.editingEnabled
+      ? "编辑 (e)"
+      : "编辑已关闭（设置里的 epubReader.enableEditing）";
 
     dom.bookTitle.textContent = state.book.title || "";
     dom.bookTitle.title = state.book.title || "";
@@ -253,10 +324,12 @@
       dom.metaTitle.title = state.book.description;
     }
 
-    if (message.progress) {
-      state.pendingScroll = { kind: "ratio", value: clamp(message.progress.scrollRatio, 0, 1) };
-    } else {
-      state.pendingScroll = { kind: "ratio", value: 0 };
+    if (!state.editMode) {
+      if (message.progress) {
+        state.pendingScroll = { kind: "ratio", value: clamp(message.progress.scrollRatio, 0, 1) };
+      } else {
+        state.pendingScroll = { kind: "ratio", value: 0 };
+      }
     }
 
     renderToc();
@@ -265,6 +338,16 @@
     syncSettingsUi();
     switchTab(state.activeTab);
     updateStatus();
+
+    // While editing, the edit surface owns the content area: a forced re-init
+    // (save, undo, another panel's edit) reloads the file being edited, and a
+    // plain refresh just updates the surrounding chrome.
+    if (state.editMode) {
+      if (message.forceRender) {
+        refreshEditContent();
+      }
+      return;
+    }
     showLoading();
   }
 
@@ -272,7 +355,12 @@
     if (!chapter) {
       return;
     }
+    if (state.editMode) {
+      // The edit surface is authoritative until the user leaves edit mode.
+      return;
+    }
     state.chapterIndex = chapter.index;
+    state.chapterPath = chapter.path || state.chapterPath;
     state.chapterTitle = chapter.title || "";
     state.chapterBody = chapter.body || "";
     state.chapterCss = chapter.css || [];
@@ -317,10 +405,19 @@
       return;
     }
     shadow.innerHTML = composeDocument();
+    if (isVisualEditing()) {
+      wireEditSurface(state.editCaret);
+    }
   }
 
   function rerenderSurface() {
     if (!state.chapterReady) {
+      return;
+    }
+    if (isVisualEditing()) {
+      // Font/theme changed mid-edit: keep the caret where the user had it.
+      state.editCaret = currentCaretOffset();
+      renderSurface();
       return;
     }
     state.pendingScroll = { kind: "ratio", value: state.scrollRatio };
@@ -335,7 +432,12 @@
       parts.push("<style>" + css + "</style>");
     }
     parts.push("<style>" + baseCss(palette) + "</style>");
-    parts.push('<div class="reader-body">');
+    const editing = isVisualEditing();
+    parts.push(
+      editing
+        ? '<div class="reader-body is-editing" contenteditable="true" spellcheck="false">'
+        : '<div class="reader-body">',
+    );
     parts.push(state.chapterBody);
     parts.push("</div>");
     return parts.join("\n");
@@ -416,6 +518,13 @@
       "}",
       "@keyframes reader-flash { from { background: " + palette.link + "; } }",
       "::selection { background: " + palette.selection + "; }",
+      /*
+       * Edit mode keeps the elements the reader normally drops in the DOM (so
+       * they survive the write-back) but hides them; see render.ts.
+       */
+      ".reader-body .epub-keep { display: none !important; }",
+      ".reader-body.is-editing { caret-color: " + palette.link + "; }",
+      ".reader-body.is-editing:focus { outline: none; }",
     ].join("\n");
   }
 
@@ -495,6 +604,11 @@
       return;
     }
     event.preventDefault();
+    if (state.editMode) {
+      // Links are inert while editing: the edit render keeps their original
+      // hrefs, and navigating away would drop the caret.
+      return;
+    }
     const external = anchor.getAttribute("data-epub-external");
     if (external) {
       vscode.postMessage({ type: "openExternal", url: external });
@@ -524,6 +638,18 @@
   }
 
   function openChapter(request) {
+    if (state.editMode) {
+      if (hasPendingEdits()) {
+        // Leaving now would drop un-written changes: ask first.
+        showEditGuard(() => {
+          discardPendingEdits();
+          leaveEditMode();
+          openChapter(request);
+        });
+        return;
+      }
+      leaveEditMode();
+    }
     state.pendingScroll = request.highlight
       ? { kind: "hit" }
       : request.fragment
@@ -829,6 +955,10 @@
   /* ------------------------------------------------------------ progress */
 
   function scheduleProgressSave() {
+    // Scrolling the edit surface says nothing about the reading position.
+    if (state.editMode) {
+      return;
+    }
     const now = Date.now();
     if (state.progressTimer) {
       return;
@@ -964,9 +1094,438 @@
     dom.surface.hidden = false;
   }
 
+  /* ------------------------------------------------------------------ edit */
+
+  function isVisualEditing() {
+    return state.editMode && state.editKind === "visual";
+  }
+
+  function hasPendingEdits() {
+    return state.editKind === "visual" ? state.editVisualDirty : state.editSourceDirty;
+  }
+
+  function isEditableChapter(path) {
+    return state.editEntries.some((entry) => entry.path === path && entry.isChapter);
+  }
+
+  function requestEnterEdit(source) {
+    if (!state.editingEnabled) {
+      showToast("编辑功能已在设置里关闭", "warn");
+      return;
+    }
+    const path = state.chapterPath;
+    if (!path) {
+      showToast("还没有打开章节", "warn");
+      return;
+    }
+    // Remember where reading was, so leaving edit mode returns there.
+    state.viewChapterIndex = state.chapterIndex;
+    state.viewScrollRatio = state.scrollRatio;
+    vscode.postMessage({ type: "requestEdit", path: path, source: source === true });
+  }
+
+  function requestEditKind(kind) {
+    if (!state.editMode || kind === state.editKind) {
+      return;
+    }
+    if (kind === "visual" && !isEditableChapter(state.editPath)) {
+      showToast("这个文件只能按源码编辑", "info");
+      return;
+    }
+    const go = () =>
+      vscode.postMessage({
+        type: "requestEdit",
+        path: state.editPath,
+        source: kind === "source",
+      });
+    if (hasPendingEdits()) {
+      showEditGuard(go);
+      return;
+    }
+    go();
+  }
+
+  function applyEditEntries(message) {
+    // Kept only to know whether the current file offers the visual editor.
+    state.editEntries = Array.isArray(message.entries) ? message.entries : [];
+  }
+
+  function applyEditContent(message) {
+    if (!message || typeof message.path !== "string" || message.path.length === 0) {
+      return;
+    }
+    const sameFile = state.editMode && state.editPath === message.path;
+    const caret = sameFile ? state.editCaret : null;
+    const sourceSelection = sameFile ? state.editSourceSelection : null;
+
+    state.editMode = true;
+    state.editPath = message.path;
+    state.editKind = message.kind === "source" ? "source" : "visual";
+    state.editVisualDirty = false;
+    state.editSourceDirty = false;
+    state.editApplied = false;
+    state.editCaret = caret;
+
+    dom.app.setAttribute("data-edit-mode", "true");
+    dom.editBar.hidden = false;
+    dom.editButton.classList.add("is-active");
+    dom.editVisualBtn.classList.toggle("is-active", state.editKind === "visual");
+    dom.editSourceBtn.classList.toggle("is-active", state.editKind === "source");
+    dom.editVisualBtn.disabled = !isEditableChapter(message.path);
+
+    if (state.editKind === "visual") {
+      dom.sourceEditor.hidden = true;
+      dom.surface.hidden = false;
+      state.chapterBody = message.body || "";
+      state.chapterCss = message.css || [];
+      state.chapterReady = true;
+      clearErrorBox();
+      hideLoading();
+      renderSurface();
+    } else {
+      if (state.editObserver) {
+        state.editObserver.disconnect();
+        state.editObserver = null;
+      }
+      dom.surface.hidden = true;
+      dom.sourceEditor.hidden = false;
+      dom.sourceEditor.value = message.content || "";
+      if (sourceSelection) {
+        dom.sourceEditor.selectionStart = sourceSelection.start;
+        dom.sourceEditor.selectionEnd = sourceSelection.end;
+        dom.sourceEditor.scrollTop = sourceSelection.scrollTop;
+      } else {
+        dom.sourceEditor.selectionStart = 0;
+        dom.sourceEditor.selectionEnd = 0;
+        dom.sourceEditor.scrollTop = 0;
+      }
+    }
+    updateEditStatus();
+  }
+
+  /** Remember changes are outstanding and write them after a typing pause. */
+  function scheduleEditApply() {
+    if (state.editApplyTimer) {
+      clearTimeout(state.editApplyTimer);
+    }
+    state.editApplyTimer = setTimeout(() => {
+      state.editApplyTimer = null;
+      flushEdit();
+    }, EDIT_APPLY_DELAY);
+  }
+
+  /** Send the current edits to the host so the document (and tab) go dirty. */
+  function flushEdit() {
+    if (state.editApplyTimer) {
+      clearTimeout(state.editApplyTimer);
+      state.editApplyTimer = null;
+    }
+    if (!state.editMode) {
+      return;
+    }
+    if (state.editKind === "visual") {
+      if (!state.editVisualDirty) {
+        return;
+      }
+      const container = shadow && shadow.querySelector(".reader-body");
+      if (!container) {
+        return;
+      }
+      state.editCaret = currentCaretOffset();
+      state.editVisualDirty = false;
+      vscode.postMessage({
+        type: "applyEdit",
+        path: state.editPath,
+        content: container.innerHTML,
+        visual: true,
+      });
+    } else {
+      if (!state.editSourceDirty) {
+        return;
+      }
+      state.editSourceSelection = {
+        start: dom.sourceEditor.selectionStart,
+        end: dom.sourceEditor.selectionEnd,
+        scrollTop: dom.sourceEditor.scrollTop,
+      };
+      state.editSourceDirty = false;
+      vscode.postMessage({
+        type: "applyEdit",
+        path: state.editPath,
+        content: dom.sourceEditor.value,
+        visual: false,
+      });
+    }
+    updateEditStatus();
+  }
+
+  function updateEditStatus() {
+    if (!state.editMode) {
+      dom.editStatus.textContent = "";
+      return;
+    }
+    const parts = [state.editKind === "visual" ? "点击正文直接改" : "编辑源码"];
+    if (hasPendingEdits()) {
+      parts.push("改动待写入");
+    } else if (state.editApplied) {
+      parts.push("已写入草稿 · Ctrl+S 保存到文件");
+    } else {
+      parts.push("Ctrl+S 保存到文件");
+    }
+    dom.editStatus.textContent = parts.join(" · ");
+  }
+
+  /** Attach the mutation watcher and restore the caret after a re-render. */
+  function wireEditSurface(caret) {
+    const container = shadow && shadow.querySelector(".reader-body");
+    if (!container) {
+      return;
+    }
+    try {
+      // Chromium otherwise separates paragraphs with <div>; books use <p>.
+      document.execCommand("defaultParagraphSeparator", false, "p");
+    } catch (error) {
+      /* not fatal: paragraph separation is a nicety */
+    }
+    scheduleMutationTracking(container);
+    if (typeof caret === "number") {
+      restoreSelectionOffset(container, caret);
+    }
+    state.editCaret = null;
+  }
+
+  function scheduleMutationTracking(container) {
+    if (state.editObserver) {
+      state.editObserver.disconnect();
+      state.editObserver = null;
+    }
+    if (!container || typeof MutationObserver !== "function") {
+      return;
+    }
+    state.editObserver = new MutationObserver(() => {
+      if (!isVisualEditing()) {
+        return;
+      }
+      state.editVisualDirty = true;
+      updateEditStatus();
+      scheduleEditApply();
+    });
+    state.editObserver.observe(container, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+      attributes: true,
+    });
+  }
+
+  /** Caret position as a flat character offset inside the editable body. */
+  function currentCaretOffset() {
+    const container = shadow && shadow.querySelector(".reader-body");
+    if (!container) {
+      return null;
+    }
+    return readSelectionOffset(container);
+  }
+
+  function readSelectionOffset(container) {
+    try {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        return null;
+      }
+      const range = selection.getRangeAt(0);
+      if (!container.contains(range.startContainer)) {
+        return null;
+      }
+      return offsetWithin(container, range.startContainer, range.startOffset);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function offsetWithin(container, node, offset) {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    let total = 0;
+    let current = walker.nextNode();
+    while (current) {
+      if (current === node) {
+        return total + offset;
+      }
+      total += current.nodeValue ? current.nodeValue.length : 0;
+      current = walker.nextNode();
+    }
+    return null;
+  }
+
+  function restoreSelectionOffset(container, offset) {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    let total = 0;
+    let current = walker.nextNode();
+    let last = null;
+    while (current) {
+      const length = current.nodeValue ? current.nodeValue.length : 0;
+      if (total + length >= offset) {
+        try {
+          const range = document.createRange();
+          range.setStart(current, Math.max(0, Math.min(length, offset - total)));
+          range.collapse(true);
+          const selection = window.getSelection();
+          if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        } catch (error) {
+          /* restoring the caret is best effort */
+        }
+        return;
+      }
+      total += length;
+      last = current;
+      current = walker.nextNode();
+    }
+    if (last) {
+      try {
+        const range = document.createRange();
+        range.setStart(last, last.nodeValue ? last.nodeValue.length : 0);
+        range.collapse(true);
+        const selection = window.getSelection();
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      } catch (error) {
+        /* ignore */
+      }
+    }
+  }
+
+  function revertEditFile() {
+    if (!state.editMode || !state.editPath) {
+      return;
+    }
+    const path = state.editPath;
+    state.editVisualDirty = false;
+    state.editSourceDirty = false;
+    state.editCaret = null;
+    state.editSourceSelection = null;
+    vscode.postMessage({ type: "revertEdit", path: path });
+    // Ordering matters: the host applies the revert before it renders again.
+    vscode.postMessage({
+      type: "requestEdit",
+      path: path,
+      source: state.editKind === "source",
+    });
+    showToast("已恢复为文件里的内容", "info");
+  }
+
+  function refreshEditContent() {
+    if (!state.editMode) {
+      return;
+    }
+    vscode.postMessage({
+      type: "requestEdit",
+      path: state.editPath,
+      source: state.editKind === "source",
+    });
+  }
+
+  function leaveEditMode() {
+    if (state.editApplyTimer) {
+      clearTimeout(state.editApplyTimer);
+      state.editApplyTimer = null;
+    }
+    if (state.editObserver) {
+      state.editObserver.disconnect();
+      state.editObserver = null;
+    }
+    state.editMode = false;
+    state.editKind = "visual";
+    state.editPath = "";
+    state.editCaret = null;
+    state.editSourceSelection = null;
+    state.editVisualDirty = false;
+    state.editSourceDirty = false;
+    state.editGuardAction = null;
+    dom.editBar.hidden = true;
+    dom.editGuard.hidden = true;
+    dom.sourceEditor.hidden = true;
+    dom.surface.hidden = false;
+    dom.editButton.classList.remove("is-active");
+    dom.app.removeAttribute("data-edit-mode");
+    // Stop accepting keystrokes immediately: the reading re-render is async.
+    if (shadow) {
+      const container = shadow.querySelector(".reader-body");
+      if (container) {
+        container.removeAttribute("contenteditable");
+        container.classList.remove("is-editing");
+      }
+    }
+    updateEditStatus();
+  }
+
+  function refreshChapterView() {
+    // Return to where reading was before edit mode took over the surface.
+    const index =
+      typeof state.viewChapterIndex === "number" ? state.viewChapterIndex : state.chapterIndex;
+    const ratio =
+      typeof state.viewScrollRatio === "number" ? state.viewScrollRatio : state.scrollRatio;
+    state.chapterIndex = index;
+    showLoading();
+    vscode.postMessage({ type: "openChapter", index: index, scrollRatio: ratio });
+  }
+
+  function requestExitEdit() {
+    if (!state.editMode) {
+      return;
+    }
+    if (hasPendingEdits()) {
+      showEditGuard(() => {
+        discardPendingEdits();
+        leaveEditMode();
+        refreshChapterView();
+      });
+      return;
+    }
+    leaveEditMode();
+    refreshChapterView();
+  }
+
+  /** Throw away the un-written changes of the file being edited. */
+  function discardPendingEdits() {
+    const path = state.editPath;
+    state.editVisualDirty = false;
+    state.editSourceDirty = false;
+    if (path) {
+      vscode.postMessage({ type: "revertEdit", path: path });
+    }
+  }
+
+  function showEditGuard(action) {
+    state.editGuardAction = action;
+    dom.editGuard.hidden = false;
+  }
+
+  function resolveEditGuard(discard) {
+    const action = state.editGuardAction;
+    state.editGuardAction = null;
+    dom.editGuard.hidden = true;
+    if (discard && action) {
+      action();
+    }
+  }
+
   /* ------------------------------------------------------------- keyboard */
 
   function onKeyDown(event) {
+    // Ctrl/Cmd+S saves, in reading and in editing alike.
+    if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) {
+      event.preventDefault();
+      if (state.editMode) {
+        flushEdit();
+      }
+      vscode.postMessage({ type: "saveNow" });
+      return;
+    }
     if (event.ctrlKey || event.metaKey || event.altKey) {
       return;
     }
@@ -974,7 +1533,28 @@
     const tag = target && target.tagName ? target.tagName.toLowerCase() : "";
     const typing =
       tag === "input" || tag === "textarea" || tag === "select" ||
-      (target && target.isContentEditable === true);
+      (target && target.isContentEditable === true) ||
+      // Focus inside the shadow root is reported on the host element.
+      (dom.surface !== undefined && document.activeElement === dom.surface);
+
+    if (state.editMode) {
+      // Single-key reader shortcuts stay off while editing: every keypress
+      // belongs to the text being written.
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (dom.editGuard.hidden === false) {
+          resolveEditGuard(false);
+        } else {
+          requestExitEdit();
+        }
+        return;
+      }
+      if (!typing && (event.key === "e" || event.key === "E")) {
+        event.preventDefault();
+        requestExitEdit();
+      }
+      return;
+    }
 
     if (typing) {
       if (event.key === "Escape" && target && target.blur) {
@@ -1008,6 +1588,10 @@
       case "b":
       case "B":
         addBookmark();
+        break;
+      case "e":
+      case "E":
+        requestEnterEdit(false);
         break;
       case "+":
       case "=":

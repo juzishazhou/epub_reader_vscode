@@ -55,8 +55,8 @@ npx --yes @vscode/vsce publish --no-dependencies   # 需要 VSCE_PAT 或已 vsce
 只想发个测试包、不进 Marketplace：
 
 ```powershell
-npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o epub-view-0.1.1.vsix
-code --install-extension epub-view-0.1.1.vsix --force
+npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository -o epub-view-0.2.1.vsix
+code --install-extension epub-view-0.2.1.vsix --force
 ```
 
 ## 首版检查清单
@@ -73,9 +73,10 @@ code --install-extension epub-view-0.1.1.vsix --force
 
 `.vscodeignore` 决定哪些文件进 `.vsix`：
 
-- **进包**：`out/**`（编译产物）、`media/**`、`docs/**`（README 截图，本地扩展详情页要用）、
-  `README.md`、`CHANGELOG.md`、`LICENSE`、`DEVELOPMENT.md`、`RELEASING.md`、`package.json`
-- **不进包**：`src/**`、`scripts/**`、`preview/**`、`out/src/test/**`、`node_modules/**`、
+- **进包**：`out/**`（编译产物，测试目录除外）、`media/**`、`README.md`、`CHANGELOG.md`、
+  `LICENSE`、`package.json`
+- **不进包**：`src/**`、`scripts/**`、`preview/**`、`out/src/test/**`、`docs/**`（README 的截图改为
+  引用仓库文件，不再在 VSIX 内重复打包）、`DEVELOPMENT.md`、`RELEASING.md`、`node_modules/**`、
   各种配置与锁文件
 
 改版本后本地的扩展不会自动更新：重新 `code --install-extension ... --force` 然后

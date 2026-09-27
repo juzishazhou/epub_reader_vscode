@@ -375,7 +375,7 @@ export function parseXml(source: string): XmlElement {
 }
 
 /** Index of the `>` that closes a tag starting at `from`, or -1. */
-function findTagEnd(source: string, from: number): number {
+export function findTagEnd(source: string, from: number): number {
   let quote = "";
   for (let i = from; i < source.length; i++) {
     const c = source[i];
@@ -475,11 +475,11 @@ function parseStartTag(raw: string): ParsedStartTag | undefined {
 
 const RAW_SERIALIZE_SKIP = new Set(["xmlns"]);
 
-function serializeAttributes(node: XmlElement): string {
+function serializeAttributes(node: XmlElement, keepXmlns: boolean): string {
   let out = "";
   for (const key of Object.keys(node.attrs)) {
     const local = localName(key).toLowerCase();
-    if (RAW_SERIALIZE_SKIP.has(local)) {
+    if (!keepXmlns && RAW_SERIALIZE_SKIP.has(local)) {
       continue;
     }
     const value = node.attrs[key];
@@ -491,28 +491,36 @@ function serializeAttributes(node: XmlElement): string {
   return out;
 }
 
-export function serialize(node: XmlNode): string {
+export interface SerializeOptions {
+  /** Emit `<img/>` style self-closing tags for void elements (EPUB needs this). */
+  xhtml?: boolean;
+  /** Keep `xmlns*` attributes; needed when writing markup back into the book. */
+  keepXmlns?: boolean;
+}
+
+export function serialize(node: XmlNode, options: SerializeOptions = {}): string {
   if (node.kind === "text") {
     return escapeHtml(node.value);
   }
   if (node.kind === "raw") {
     return node.value;
   }
-  const open = `<${node.name}${serializeAttributes(node)}>`;
+  const open = `<${node.name}${serializeAttributes(node, options.keepXmlns === true)}`;
   if (VOID_ELEMENTS.has(node.local)) {
-    return open;
+    // XHTML (and therefore EPUB) requires void elements to self-close.
+    return options.xhtml ? `${open}/>` : `${open}>`;
   }
-  let out = open;
+  let out = `${open}>`;
   for (const childNode of node.children) {
-    out += serialize(childNode);
+    out += serialize(childNode, options);
   }
   return `${out}</${node.name}>`;
 }
 
-export function serializeChildren(node: XmlElement): string {
+export function serializeChildren(node: XmlElement, options: SerializeOptions = {}): string {
   let out = "";
   for (const childNode of node.children) {
-    out += serialize(childNode);
+    out += serialize(childNode, options);
   }
   return out;
 }

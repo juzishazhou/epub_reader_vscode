@@ -22,3 +22,8 @@ docs/**
 DEVELOPMENT.md
 RELEASING.md
 tsconfig.json
+
+# 示例电子书只用于本地测试（README/DEVELOPMENT 都说明仓库不附带书），
+# 既不该发行到安装包里，也不该让几十 MB 的书把包撑大。
+*.epub
+fixtures/**

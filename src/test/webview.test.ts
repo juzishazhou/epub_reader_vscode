@@ -344,3 +344,297 @@ test("the webview client renders the host payload and drives it back", async () 
     "results for an older request must be ignored",
   );
 });
+
+/* ------------------------------------------------------------- edit mode */
+
+interface EditFixtures {
+  posted: any[];
+  send: (message: unknown) => void;
+  window: any;
+  panel: Awaited<ReturnType<typeof openPanel>>["panel"];
+  entries: any;
+  editContent: any;
+}
+
+/**
+ * Boot the real client with real host payloads and the edit content for the
+ * first chapter already fetched from the host.
+ */
+async function bootEditFixtures(epubPath: string): Promise<EditFixtures> {
+  const { panel } = await openPanel(epubPath, createEpub3());
+  const mark = panel.webview.count();
+  await panel.webview.send({ type: "ready" });
+  const init = await panel.webview.waitFor<InitMessage>("init", { after: mark });
+  const chapter = await panel.webview.waitFor<{ chapter: ChapterPayload }>("chapter", { after: mark });
+
+  const editMark = panel.webview.count();
+  await panel.webview.send({ type: "requestEdit" });
+  const entries = await panel.webview.waitFor<any>("editEntries", { after: editMark });
+  const editContent = await panel.webview.waitFor<any>("editContent", { after: editMark });
+
+  const { window, posted, send } = await bootClient(panel.webview.html);
+  send(init);
+  send(chapter);
+  return { posted, send, window, panel, entries, editContent };
+}
+
+/** MutationObserver delivery is asynchronous; let it run before asserting. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 30));
+}
+
+test("the webview edits the chapter in place and writes it back to the host", async () => {
+  resetHostState();
+  const { posted, send, window, entries, editContent } = await bootEditFixtures(
+    "D:/books/edit-ui.epub",
+  );
+  const doc = window.document;
+
+  // The toolbar button asks the host for the current chapter's edit content.
+  posted.length = 0;
+  doc.getElementById("btn-edit").click();
+  const request = lastOfType(posted, "requestEdit");
+  assert.ok(request, `expected a requestEdit, saw [${posted.map((m) => m.type)}]`);
+  assert.match(request.path, /chapter1\.xhtml$/);
+
+  posted.length = 0;
+  send(entries);
+  send(editContent);
+
+  assert.equal(doc.getElementById("edit-bar").hidden, false);
+  assert.equal(doc.getElementById("app").getAttribute("data-edit-mode"), "true");
+  assert.equal(doc.getElementById("btn-edit").classList.contains("is-active"), true);
+  assert.equal(
+    doc.getElementById("edit-file"),
+    null,
+    "the file picker was removed: editing targets the chapter being read",
+  );
+  assert.equal(doc.getElementById("btn-edit-visual").disabled, false);
+
+  const container = shadowOf(window).querySelector(".reader-body");
+  assert.ok(container, "the editable body must exist");
+  assert.equal(container.getAttribute("contenteditable"), "true");
+  assert.ok(container.classList.contains("is-editing"));
+  assert.match(shadowOf(window).innerHTML, /\.reader-body \.epub-keep/);
+
+  // Typing marks the file dirty and the 应用 button posts it to the host.
+  container.appendChild(doc.createTextNode("新加的一句话"));
+  await settle();
+  assert.match(doc.getElementById("edit-status").textContent, /改动待写入|Ctrl\+S/);
+  posted.length = 0;
+  doc.getElementById("btn-edit-apply").click();
+  const applied = lastOfType(posted, "applyEdit");
+  assert.ok(applied, `expected an applyEdit, saw [${posted.map((m) => m.type)}]`);
+  assert.equal(applied.path, "OPS/text/chapter1.xhtml");
+  assert.equal(applied.visual, true);
+  assert.match(applied.content, /新加的一句话/);
+  assert.match(applied.content, /data-epub-orig-src/, "annotations travel with the edit");
+
+  send({ type: "editApplied", path: "OPS/text/chapter1.xhtml", dirty: true });
+  assert.match(doc.getElementById("edit-status").textContent, /已写入草稿/);
+
+  // Links are inert while editing: no navigation request is posted.
+  posted.length = 0;
+  const link = shadowOf(window).querySelector("a");
+  assert.ok(link);
+  link.click();
+  assert.equal(lastOfType(posted, "openChapter"), undefined);
+});
+
+test("reader shortcuts stay off while editing and Ctrl+S saves", async () => {
+  resetHostState();
+  const { posted, send, window, entries, editContent } = await bootEditFixtures(
+    "D:/books/shortcuts.epub",
+  );
+  const doc = window.document;
+  posted.length = 0;
+  doc.getElementById("btn-edit").click();
+  send(entries);
+  send(editContent);
+
+  posted.length = 0;
+  press(window, "]");
+  press(window, "t");
+  press(window, "b");
+  assert.equal(posted.length, 0, `editing must swallow reader shortcuts, saw ${posted.map((m) => m.type)}`);
+
+  posted.length = 0;
+  doc.dispatchEvent(
+    new window.KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true }),
+  );
+  assert.ok(lastOfType(posted, "saveNow"), "Ctrl+S must ask the host to save");
+
+  // Leaving edit mode re-renders the chapter through the reading pipeline.
+  posted.length = 0;
+  doc.getElementById("btn-edit-exit").click();
+  const refresh = lastOfType(posted, "openChapter");
+  assert.ok(refresh, `expected a chapter refresh, saw [${posted.map((m) => m.type)}]`);
+  assert.equal(refresh.index, 0);
+  assert.equal(doc.getElementById("edit-bar").hidden, true);
+  assert.equal(doc.getElementById("app").getAttribute("data-edit-mode"), null);
+});
+
+test("the source editor takes over and guards pending changes", async () => {
+  resetHostState();
+  const { posted, send, window, entries, editContent } = await bootEditFixtures(
+    "D:/books/source-ui.epub",
+  );
+  const doc = window.document;
+  posted.length = 0;
+  doc.getElementById("btn-edit").click();
+  send(entries);
+  send(editContent);
+
+  // 源码 swaps the visual editor for the raw XHTML of the same chapter.
+  posted.length = 0;
+  doc.getElementById("btn-edit-source").click();
+  expectMessage(posted, {
+    type: "requestEdit",
+    path: "OPS/text/chapter1.xhtml",
+    source: true,
+  });
+
+  send({
+    type: "editContent",
+    path: "OPS/text/chapter1.xhtml",
+    kind: "source",
+    content: "<html><body><p>原始源码</p></body></html>",
+  });
+  const area = doc.getElementById("source-editor");
+  assert.equal(area.hidden, false);
+  assert.equal(doc.getElementById("reading-surface").hidden, true);
+  assert.equal(area.value, "<html><body><p>原始源码</p></body></html>");
+  assert.equal(doc.getElementById("btn-edit-source").classList.contains("is-active"), true);
+
+  posted.length = 0;
+  area.value = "<html><body><p>改过的源码</p></body></html>";
+  area.dispatchEvent(new window.Event("input", { bubbles: true }));
+  doc.getElementById("btn-edit-apply").click();
+  const applied = lastOfType(posted, "applyEdit");
+  assert.ok(applied, `expected an applyEdit, saw [${posted.map((m) => m.type)}]`);
+  assert.equal(applied.visual, false);
+  assert.equal(applied.content, "<html><body><p>改过的源码</p></body></html>");
+
+  // Leaving with un-written changes asks before dropping them.
+  area.value = "<html><body><p>又要改</p></body></html>";
+  area.dispatchEvent(new window.Event("input", { bubbles: true }));
+  press(window, "Escape");
+  assert.equal(doc.getElementById("edit-guard").hidden, false);
+
+  posted.length = 0;
+  doc.getElementById("guard-discard").click();
+  assert.ok(lastOfType(posted, "revertEdit"), "discarding restores the file from disk");
+  assert.ok(lastOfType(posted, "openChapter"), "and returns to reading");
+  assert.equal(doc.getElementById("edit-guard").hidden, true);
+  assert.equal(doc.getElementById("edit-bar").hidden, true);
+});
+
+test("the edit button is disabled when the setting turns editing off", async () => {
+  resetHostState();
+  const { posted, send, window } = await bootEditFixtures("D:/books/readonly-ui.epub");
+  const doc = window.document;
+
+  send({
+    type: "init",
+    book: { title: "测试之书", creator: "测试作者", chapterCount: 3 },
+    toc: [],
+    settings: { fontSize: 17, lineHeight: 1.75, maxWidth: 46, pageTheme: "auto", rememberProgress: true },
+    bookmarks: [],
+    startChapter: 0,
+    editingEnabled: false,
+  });
+  assert.equal(doc.getElementById("btn-edit").disabled, true);
+  assert.match(doc.getElementById("btn-edit").title, /关闭/);
+
+  posted.length = 0;
+  doc.getElementById("btn-edit").click();
+  press(window, "e");
+  assert.equal(
+    posted.length,
+    0,
+    `a disabled editor must not ask for content, saw [${posted.map((m) => m.type)}]`,
+  );
+  assert.equal(doc.getElementById("edit-bar").hidden, true);
+});
+
+test("editing never clobbers the reading position", async () => {
+  resetHostState();
+  const { posted, send, window, entries, editContent } = await bootEditFixtures(
+    "D:/books/position.epub",
+  );
+  const doc = window.document;
+  const surface = doc.getElementById("reading-surface");
+
+  // Reading mode: scrolling reports progress.
+  posted.length = 0;
+  surface.dispatchEvent(new window.Event("scroll"));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.ok(lastOfType(posted, "saveProgress"), "reading scrolls must save progress");
+
+  posted.length = 0;
+  doc.getElementById("btn-edit").click();
+  send(entries);
+  send(editContent);
+  assert.equal(doc.getElementById("edit-bar").hidden, false);
+
+  // Scrolling the edit surface says nothing about where reading is.
+  posted.length = 0;
+  surface.dispatchEvent(new window.Event("scroll"));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(
+    lastOfType(posted, "saveProgress"),
+    undefined,
+    "editing must not move the reading position",
+  );
+
+  // Leaving edit mode returns to the recorded chapter and ratio.
+  posted.length = 0;
+  doc.getElementById("btn-edit-exit").click();
+  const refresh = lastOfType(posted, "openChapter");
+  assert.ok(refresh, `expected a chapter refresh, saw [${posted.map((m) => m.type)}]`);
+  assert.equal(refresh.index, 0);
+  assert.equal(typeof refresh.scrollRatio, "number");
+});
+
+test("a forced refresh reloads the file being edited instead of the reading view", async () => {
+  resetHostState();
+  const { posted, send, window, entries, editContent } = await bootEditFixtures(
+    "D:/books/refresh.epub",
+  );
+  const doc = window.document;
+  posted.length = 0;
+  doc.getElementById("btn-edit").click();
+  send(entries);
+  send(editContent);
+  assert.equal(doc.getElementById("edit-bar").hidden, false);
+
+  // A save (or an undo, or another panel) arrives as a forced init.
+  posted.length = 0;
+  send({
+    type: "init",
+    book: { title: "测试之书", creator: "测试作者", chapterCount: 3 },
+    toc: [],
+    settings: { fontSize: 17, lineHeight: 1.75, maxWidth: 46, pageTheme: "auto", rememberProgress: true },
+    bookmarks: [],
+    startChapter: 0,
+    forceRender: true,
+  });
+  const refresh = lastOfType(posted, "requestEdit");
+  assert.ok(refresh, `expected the edit content to be reloaded, saw [${posted.map((m) => m.type)}]`);
+  assert.equal(refresh.path, "OPS/text/chapter1.xhtml");
+  assert.equal(doc.getElementById("edit-bar").hidden, false, "edit mode survives a refresh");
+
+  // A quiet refresh (this panel's own edit) must not reload anything.
+  posted.length = 0;
+  send({
+    type: "init",
+    book: { title: "测试之书", creator: "测试作者", chapterCount: 3 },
+    toc: [],
+    settings: { fontSize: 17, lineHeight: 1.75, maxWidth: 46, pageTheme: "auto", rememberProgress: true },
+    bookmarks: [],
+    startChapter: 0,
+    forceRender: false,
+  });
+  assert.equal(lastOfType(posted, "requestEdit"), undefined);
+  assert.equal(lastOfType(posted, "openChapter"), undefined);
+});

@@ -101,7 +101,7 @@ ${payloads}
   return html.replace("<head>", `<head>\n<style>:root {${THEME}}</style>`);
 }
 
-async function capture(shellHtml, chapterIndex, searchQuery) {
+async function capture(shellHtml, chapterIndex, searchQuery, editMode) {
   const { panel } = await openPanel("D:/books/screenshot.epub", realBookBytes());
 
   const mark = panel.webview.count();
@@ -116,6 +116,17 @@ async function capture(shellHtml, chapterIndex, searchQuery) {
     `  window.__inject(${JSON.stringify(init)});`,
     `  window.__inject(${JSON.stringify(chapter)});`,
   ];
+
+  if (editMode) {
+    const editMark = panel.webview.count();
+    await panel.webview.send({ type: "requestEdit" });
+    const entries = await panel.webview.waitFor("editEntries", { after: editMark });
+    const content = await panel.webview.waitFor("editContent", { after: editMark });
+    payloads.push(
+      `  window.__inject(${JSON.stringify(entries)});`,
+      `  window.__inject(${JSON.stringify(content)});`,
+    );
+  }
 
   if (searchQuery) {
     const searchMark = panel.webview.count();
@@ -199,12 +210,19 @@ const jobs = [
     chapter: 100,
     search: "陆江仙",
   },
+  {
+    html: path.join(previewDir, "ui-edit.html"),
+    png: path.join(docsDir, "edit-ui.png"),
+    chapter: 100,
+    search: undefined,
+    edit: true,
+  },
 ];
 
 let title = "";
 let chapters = 0;
 for (const job of jobs) {
-  const rendered = await capture(shellHtml, job.chapter, job.search);
+  const rendered = await capture(shellHtml, job.chapter, job.search, job.edit);
   title = rendered.title;
   chapters = rendered.chapters;
   fs.writeFileSync(job.html, rendered.html, "utf8");

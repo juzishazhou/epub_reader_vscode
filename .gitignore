@@ -9,3 +9,8 @@ preview/
 .npmrc
 .DS_Store
 Thumbs.db
+
+# 示例电子书只用于本地跑真实书籍用例（见 DEVELOPMENT.md）：
+# 体积大且多为版权作品，绝不入库。
+*.epub
+fixtures/

@@ -3,8 +3,11 @@ import * as fs from "node:fs";
 import { findSampleEpub, requireSampleEpub } from "./helpers/sample";
 import { test } from "node:test";
 import { openEpub } from "../epub/book";
+import { restoreEditedMarkup, spliceBody } from "../epub/edit";
 import { chapterText, renderChapter } from "../epub/render";
 import { SearchIndex } from "../epub/search";
+import { ZipArchive } from "../epub/zip";
+import { rewriteZip } from "../epub/zipwrite";
 
 /** The sample book lives next to the extension checkout, not inside it. */
 const REAL_BOOK = findSampleEpub();
@@ -65,4 +68,74 @@ test("opens a real epub within a reasonable time budget", { skip }, () => {
   const started = Date.now();
   openEpub(data);
   assert.ok(Date.now() - started < 5000, "opening a book must not block for seconds");
+});
+
+test("edits a chapter of a real book and writes it back losslessly", { skip }, () => {
+  const data = fs.readFileSync(requireSampleEpub());
+  const book = openEpub(data);
+  const index = 10;
+  const path = book.chapters[index].path;
+  const original = book.zip.readText(path);
+
+  const rendered = renderChapter(book, index, {
+    uriFor: (target) => `webview://asset/${target}`,
+    resolveChapterPath: (target) => {
+      const found = book.chapterIndexForPath(target);
+      return found === undefined ? undefined : book.chapters[found].path;
+    },
+    readText: (target) => book.zip.tryReadText(target),
+    fidelity: "edit",
+  });
+  assert.ok(rendered.body.length > 100);
+  assert.match(rendered.body, /data-epub-orig-|epub-keep/, "the real book exercises annotations");
+
+  // Play the browser: serialize the editable DOM back to markup, change text.
+  const editedMarkup = rendered.body.replace(/([\u4e00-\u9fa5]{2,})/, "$1【编辑测试】");
+  const next = spliceBody(original, restoreEditedMarkup(editedMarkup));
+  assert.match(next, /【编辑测试】/);
+  assert.ok(!next.includes("webview://"), "no webview URI may reach the book");
+  assert.ok(!next.includes("data-epub-orig-"));
+  assert.ok(!next.includes("epub-keep"));
+  // Everything outside the body is byte-identical.
+  assert.equal(next.slice(0, original.indexOf("<body")), original.slice(0, original.indexOf("<body")));
+
+  // Rewriting the archive edits one entry and keeps every other one intact.
+  const rewritten = ZipArchive.open(data);
+  rewritten.setOverride(path, next);
+  const bytes = rewriteZip(rewritten);
+  const after = openEpub(bytes);
+  assert.equal(after.chapters.length, book.chapters.length);
+  assert.match(after.zip.readText(path), /【编辑测试】/);
+  assert.equal(after.metadata.title, book.metadata.title);
+
+  const before = ZipArchive.open(data);
+  const afterZip = ZipArchive.open(bytes);
+  assert.deepEqual(afterZip.names(), before.names(), "no entry may be added or dropped");
+  let compared = 0;
+  for (const name of before.names()) {
+    if (name === path) {
+      continue;
+    }
+    compared++;
+    assert.ok(
+      before.read(name).equals(afterZip.read(name)),
+      `${name} must be byte-identical after the rewrite`,
+    );
+    assert.ok(
+      Buffer.from(before.rawEntry(name)!.bytes).equals(Buffer.from(afterZip.rawEntry(name)!.bytes)),
+      `${name} must keep its exact compressed payload`,
+    );
+  }
+  assert.ok(compared > 1000, `expected to compare the whole book, compared ${compared}`);
+
+  // Optional ZIP header fields are normalized away, so the file may shrink a
+  // little; content-wise nothing changed. Only the edited chapter differs.
+  const growth = Math.abs(bytes.length - data.length) / data.length;
+  assert.ok(growth < 0.05, `rewriting one chapter changed the file size by ${(growth * 100).toFixed(1)}%`);
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `[real epub edit] path=${path} chapterBytes=${original.length}->${next.length} ` +
+      `zip=${data.length}->${bytes.length} entries=${compared + 1}`,
+  );
 });

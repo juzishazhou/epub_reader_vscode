@@ -121,8 +121,13 @@ export class FakeFileSystem {
     }
   }
 
-  async rename(): Promise<void> {
-    throw new Error("not implemented");
+  async rename(source: FakeUri, target: FakeUri): Promise<void> {
+    const data = this.files.get(source.path);
+    if (!data) {
+      throw new Error(`ENOENT: ${source.path}`);
+    }
+    this.files.delete(source.path);
+    await this.writeFile(target, data);
   }
 }
 
@@ -236,6 +241,8 @@ export const configurationStore = new Map<string, unknown>();
 export const openedExternal: string[] = [];
 export const registeredCommands = new Map<string, (...args: any[]) => unknown>();
 export const quickPickAnswers: any[] = [];
+/** Command ids passed to `vscode.commands.executeCommand`, in order. */
+export const executedCommands: string[] = [];
 
 export interface RegisteredEditorProvider {
   viewType: string;
@@ -315,7 +322,9 @@ export const vscodeMock: Record<string, unknown> = {
       registeredCommands.set(id, handler);
       return { dispose: () => undefined };
     },
-    executeCommand: async () => undefined,
+    executeCommand: async (id: string) => {
+      executedCommands.push(id);
+    },
   },
 };
 
@@ -353,6 +362,7 @@ export function resetHostState(): void {
   configurationStore.clear();
   openedExternal.length = 0;
   quickPickAnswers.length = 0;
+  executedCommands.length = 0;
   fakeFs.files.clear();
   fakeFs.directories.clear();
 }

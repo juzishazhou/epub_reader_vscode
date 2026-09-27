@@ -1,4 +1,5 @@
 import { EpubBook } from "./book";
+import { EPUB_KEEP_CLASS } from "./edit";
 import {
   attr,
   createElement,
@@ -77,6 +78,14 @@ export interface RenderChapterOptions {
   resolveChapterPath: (path: string) => string | undefined;
   readText: (path: string) => string | undefined;
   highlight?: ChapterHighlight;
+  /**
+   * `display` (default): sanitize and rewrite for reading.
+   * `edit`: prepare for visual editing — keep every element (hidden instead of
+   * dropped), leave anchors verbatim and annotate each rewritten attribute
+   * with its original value under `data-epub-orig-*`, so the edit can be
+   * written back losslessly.
+   */
+  fidelity?: "display" | "edit";
 }
 
 interface WalkOptions {
@@ -87,6 +96,7 @@ interface WalkOptions {
   uri?: (path: string) => string | undefined;
   css?: string[];
   skipCss?: boolean;
+  fidelity: "display" | "edit";
 }
 
 /** Turn one spine document into a safe, self-contained reading payload. */
@@ -111,6 +121,7 @@ export function renderChapter(
     onAsset: (path) => assets.add(path),
     uri: options.uriFor,
     css,
+    fidelity: options.fidelity ?? "display",
   };
 
   // Stylesheets normally live in the head, which is not part of the body walk.
@@ -123,14 +134,16 @@ export function renderChapter(
   transformChildren(body, walkOptions);
 
   let highlightFound = false;
-  if (options.highlight && options.highlight.query.length > 0) {
+  if (options.highlight && options.highlight.query.length > 0 && walkOptions.fidelity === "display") {
     highlightFound = applyHighlight(body, options.highlight);
   }
 
   return {
     index,
     title: chapter.title || deriveTitle(body) || `第 ${index + 1} 节`,
-    body: serializeChildren(body),
+    // Edit markup goes into a DOM and comes back as a file, so namespace
+    // declarations must survive the trip.
+    body: serializeChildren(body, walkOptions.fidelity === "edit" ? { keepXmlns: true } : {}),
     css,
     text: textContent(body),
     assets: Array.from(assets),
@@ -154,6 +167,7 @@ export function chapterText(book: EpubBook, index: number): string {
     readText: () => undefined,
     resolveChapterPath: () => undefined,
     skipCss: true,
+    fidelity: "display",
   });
   return textContent(body).replace(/\u00a0/g, " ");
 }
@@ -219,6 +233,7 @@ function deriveTitle(body: XmlElement): string {
 }
 
 function transformChildren(parent: XmlElement, options: WalkOptions): void {
+  const edit = options.fidelity === "edit";
   const out: XmlNode[] = [];
   for (const node of parent.children) {
     if (!isElement(node)) {
@@ -228,7 +243,9 @@ function transformChildren(parent: XmlElement, options: WalkOptions): void {
     const local = node.local;
 
     if (local === "style") {
-      if (!options.skipCss) {
+      // Display mode: collect body styles into the css payload.
+      // Edit mode: keep the element in place, verbatim, for round-tripping.
+      if (!options.skipCss && !edit) {
         const cssText = rawTextOf(node);
         if (cssText.trim().length > 0) {
           const processed = processCss(cssText, options.baseDir, options, 0);
@@ -236,12 +253,14 @@ function transformChildren(parent: XmlElement, options: WalkOptions): void {
             options.css.push(processed);
           }
         }
+      } else if (edit) {
+        out.push(node);
       }
       continue;
     }
 
     if (local === "link") {
-      if (!options.skipCss) {
+      if (!options.skipCss && !edit) {
         const rel = (attr(node, "rel") ?? "").toLowerCase().split(/\s+/);
         const href = attr(node, "href");
         if (href && rel.includes("stylesheet")) {
@@ -255,11 +274,24 @@ function transformChildren(parent: XmlElement, options: WalkOptions): void {
             }
           }
         }
+      } else if (edit) {
+        // Keep the element where it is; rewrite its href so the sheet loads,
+        // and remember the original value for the write-back.
+        transformAttributes(node, options);
+        out.push(node);
       }
       continue;
     }
 
     if (DROP_ELEMENTS.has(local)) {
+      if (edit) {
+        // Hidden but kept: CSP neutralizes script-side behaviour, and the
+        // element still serializes back into the book unchanged.
+        markKept(node);
+        transformAttributes(node, options);
+        transformChildren(node, options);
+        out.push(node);
+      }
       continue;
     }
 
@@ -270,6 +302,27 @@ function transformChildren(parent: XmlElement, options: WalkOptions): void {
   parent.children = out;
 }
 
+/**
+ * Flag an element as intentionally hidden in edit mode: the marker class is
+ * the single token `restoreEditedMarkup` knows how to strip again.
+ */
+function markKept(node: XmlElement): void {
+  const cls = attr(node, "class");
+  if (!cls) {
+    setAttr(node, "class", EPUB_KEEP_CLASS);
+    return;
+  }
+  if (cls.split(/\s+/).includes(EPUB_KEEP_CLASS)) {
+    return;
+  }
+  setAttr(node, "class", `${cls} ${EPUB_KEEP_CLASS}`);
+}
+
+/** Record an attribute's original value for the edit write-back. */
+function annotateOriginal(node: XmlElement, name: string, value: string): void {
+  setAttr(node, `data-epub-orig-${name}`, value);
+}
+
 function rawTextOf(node: XmlElement): string {
   return node.children
     .filter((childNode): childNode is XmlRaw => childNode.kind === "raw")
@@ -278,6 +331,10 @@ function rawTextOf(node: XmlElement): string {
 }
 
 function transformAttributes(node: XmlElement, options: WalkOptions): void {
+  if (options.fidelity === "edit") {
+    transformAttributesForEdit(node, options);
+    return;
+  }
   for (const key of Object.keys(node.attrs)) {
     const local = localName(key).toLowerCase();
     const value = node.attrs[key] ?? "";
@@ -316,6 +373,81 @@ function transformAttributes(node: XmlElement, options: WalkOptions): void {
   if (inlineStyle && !options.skipCss) {
     setAttr(node, "style", processCss(inlineStyle, options.baseDir, options, 0));
   }
+}
+
+/**
+ * Edit-mode attribute handling: nothing is removed, everything is reversible.
+ * `on*` handlers and `javascript:` links stay verbatim — the shell CSP
+ * (`script-src 'nonce-…'`) already makes them inert inside the webview — and
+ * every rewritten reference is annotated with its original value.
+ */
+function transformAttributesForEdit(node: XmlElement, options: WalkOptions): void {
+  if (node.local === "base") {
+    // A live base element would hijack URL resolution for the whole surface.
+    const href = attr(node, "href");
+    if (href) {
+      annotateOriginal(node, "href", href);
+      setAttr(node, "href", "#");
+    }
+    return;
+  }
+
+  const inlineStyle = attr(node, "style");
+  if (inlineStyle && !options.skipCss) {
+    annotateOriginal(node, "style", inlineStyle);
+    setAttr(node, "style", processCss(inlineStyle, options.baseDir, options, 0));
+  }
+
+  switch (node.local) {
+    case "img":
+      rewriteEditableAsset(node, "src", options);
+      break;
+    case "image":
+    case "use":
+      rewriteEditableAsset(node, "href", options);
+      break;
+    case "source":
+      rewriteEditableAsset(node, "src", options);
+      break;
+    default:
+      break;
+  }
+
+  const background = attr(node, "background");
+  if (background) {
+    rewriteEditableAsset(node, "background", options);
+  }
+}
+
+/** Annotate the original value, then rewrite for display when possible. */
+function rewriteEditableAsset(node: XmlElement, name: string, options: WalkOptions): void {
+  const value = attr(node, name);
+  if (!value) {
+    return;
+  }
+  const trimmed = value.trim();
+  if (
+    trimmed.length === 0 ||
+    trimmed.startsWith("#") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+  ) {
+    return;
+  }
+  const target = resolveTarget(trimmed, options.baseDir);
+  if (!target) {
+    return;
+  }
+  annotateOriginal(node, name, value);
+  options.onAsset?.(target);
+  if (!options.uri) {
+    return;
+  }
+  const uri = options.uri(target);
+  if (uri) {
+    setAttr(node, name, uri);
+  }
+  // A reference we cannot resolve keeps its original value: faithfulness
+  // beats a working image when the two cannot both be had.
 }
 
 function rewriteAssetAttribute(node: XmlElement, name: string, options: WalkOptions): void {

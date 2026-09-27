@@ -53,6 +53,7 @@ export function buildReaderShell(webview: vscode.Webview, extensionUri: vscode.U
     <div class="toolbar-right">
       <input id="search-input" class="search-input" type="search" placeholder="全文搜索 (/)">
       <button id="btn-bookmark" class="icon-btn" type="button" title="在此处加书签 (b)">🔖</button>
+      <button id="btn-edit" class="icon-btn" type="button" title="编辑 (e)">✎</button>
       <button id="btn-font-dec" class="icon-btn" type="button" title="减小字号 (-)">A−</button>
       <button id="btn-font-inc" class="icon-btn" type="button" title="增大字号 (+)">A+</button>
       <select id="theme-select" class="theme-select" title="正文配色">
@@ -95,7 +96,20 @@ export function buildReaderShell(webview: vscode.Webview, extensionUri: vscode.U
   </aside>
 
   <main class="content">
+    <div id="edit-bar" class="edit-bar" hidden>
+      <div class="edit-modes">
+        <button id="btn-edit-visual" class="edit-mode-btn" type="button" title="在排版结果上直接编辑">排版</button>
+        <button id="btn-edit-source" class="edit-mode-btn" type="button" title="直接编辑 XHTML / CSS 源码">源码</button>
+      </div>
+      <span id="edit-status" class="edit-status"></span>
+      <div class="edit-actions">
+        <button id="btn-edit-apply" class="primary-btn" type="button" title="把修改写入文档（Ctrl+S 会写入并保存）">应用</button>
+        <button id="btn-edit-revert" class="icon-btn" type="button" title="放弃此文件的改动，恢复为上次保存的内容">↺</button>
+        <button id="btn-edit-exit" class="icon-btn" type="button" title="退出编辑 (Esc)">✕</button>
+      </div>
+    </div>
     <div id="reading-surface" class="reading-surface" tabindex="0"></div>
+    <textarea id="source-editor" class="source-editor" spellcheck="false" wrap="off" aria-label="源码编辑" hidden></textarea>
     <div id="loading" class="loading" hidden>正在加载章节…</div>
   </main>
 
@@ -118,12 +132,25 @@ export function buildReaderShell(webview: vscode.Webview, extensionUri: vscode.U
         <dt>t</dt><dd>展开或收起侧栏</dd>
         <dt>/</dt><dd>聚焦搜索框</dd>
         <dt>b</dt><dd>在当前位置加书签</dd>
+        <dt>e</dt><dd>进入 / 退出编辑模式</dd>
+        <dt>Ctrl+S</dt><dd>写入改动并保存 EPUB</dd>
         <dt>+ / -</dt><dd>字号增减</dd>
         <dt>0</dt><dd>恢复默认字号</dd>
         <dt>Esc</dt><dd>关闭浮层 / 取消搜索</dd>
         <dt>?</dt><dd>显示本帮助</dd>
       </dl>
       <button id="help-close" class="primary-btn" type="button">知道了</button>
+    </div>
+  </div>
+
+  <div id="edit-guard" class="help-overlay" hidden>
+    <div class="help-card">
+      <h2>还有改动没有写入</h2>
+      <p>继续就会丢掉这些修改。可以先按 Ctrl+S 保存，或选择放弃。</p>
+      <div class="guard-actions">
+        <button id="guard-discard" class="primary-btn" type="button">放弃修改</button>
+        <button id="guard-stay" class="icon-btn" type="button">继续编辑</button>
+      </div>
     </div>
   </div>
 

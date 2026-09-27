@@ -29,6 +29,11 @@ export interface ZipEntry {
   readonly uncompressedSize: number;
   readonly localHeaderOffset: number;
   readonly isDirectory: boolean;
+  /** CRC-32 of the uncompressed data, kept for verbatim re-writing. */
+  readonly crc: number;
+  /** DOS timestamp fields exactly as stored in the central directory. */
+  readonly dosTime: number;
+  readonly dosDate: number;
 }
 
 function readU16(data: Buffer, offset: number): number {
@@ -110,6 +115,8 @@ export class ZipArchive {
   private readonly byName = new Map<string, ZipEntry>();
   private readonly byLowerName = new Map<string, ZipEntry>();
   private readonly textCache = new Map<string, string>();
+  /** Edited entries that shadow the file content until the book is saved. */
+  private readonly overrides = new Map<string, string>();
 
   private constructor(private readonly data: Buffer, entries: readonly ZipEntry[]) {
     for (const entry of entries) {
@@ -162,6 +169,9 @@ export class ZipArchive {
       }
       const flags = readU16(data, p + 8);
       const method = readU16(data, p + 10);
+      const dosTime = readU16(data, p + 12);
+      const dosDate = readU16(data, p + 14);
+      const crc = readU32(data, p + 16);
       const partial = {
         uncompressedSize: readU32(data, p + 24),
         compressedSize: readU32(data, p + 20),
@@ -192,6 +202,9 @@ export class ZipArchive {
         name: normalized,
         method,
         flags,
+        crc,
+        dosTime,
+        dosDate,
         compressedSize: partial.compressedSize,
         uncompressedSize: partial.uncompressedSize,
         localHeaderOffset: partial.localHeaderOffset,
@@ -238,6 +251,10 @@ export class ZipArchive {
 
   /** Decompress one entry. Returns a fresh buffer that does not alias the archive. */
   read(name: string): Buffer {
+    const override = this.overrides.get(normalizeZipPath(name));
+    if (override !== undefined) {
+      return Buffer.from(override, "utf8");
+    }
     const entry = this.findEntry(name);
     if (!entry) {
       throw new ZipError(`EPUB 中不存在条目：${name}`);
@@ -245,18 +262,8 @@ export class ZipArchive {
     if ((entry.flags & 0x0001) !== 0) {
       throw new ZipError(`条目已加密，无法读取：${entry.name}`);
     }
-    const offset = entry.localHeaderOffset;
-    if (offset + 30 > this.data.length || readU32(this.data, offset) !== SIG_LOCAL) {
-      throw new ZipError(`条目本地头损坏：${entry.name}`);
-    }
-    const nameLength = readU16(this.data, offset + 26);
-    const extraLength = readU16(this.data, offset + 28);
-    const start = offset + 30 + nameLength + extraLength;
-    const end = start + entry.compressedSize;
-    if (end > this.data.length) {
-      throw new ZipError(`条目数据越界：${entry.name}`);
-    }
-    const raw = this.data.subarray(start, end);
+    const range = this.localDataRange(entry);
+    const raw = this.data.subarray(range.start, range.end);
     switch (entry.method) {
       case METHOD_STORE:
         return Buffer.from(raw);
@@ -271,9 +278,83 @@ export class ZipArchive {
     }
   }
 
+  /** Byte range of an entry's compressed payload inside the archive. */
+  private localDataRange(entry: ZipEntry): { start: number; end: number } {
+    const offset = entry.localHeaderOffset;
+    if (offset + 30 > this.data.length || readU32(this.data, offset) !== SIG_LOCAL) {
+      throw new ZipError(`条目本地头损坏：${entry.name}`);
+    }
+    const nameLength = readU16(this.data, offset + 26);
+    const extraLength = readU16(this.data, offset + 28);
+    const start = offset + 30 + nameLength + extraLength;
+    const end = start + entry.compressedSize;
+    if (end > this.data.length) {
+      throw new ZipError(`条目数据越界：${entry.name}`);
+    }
+    return { start, end };
+  }
+
+  /**
+   * Verbatim copy data for one unchanged entry: its raw compressed bytes plus
+   * the central-directory metadata needed to re-emit it into a new archive.
+   */
+  rawEntry(name: string):
+    | {
+        name: string;
+        method: number;
+        crc: number;
+        compressedSize: number;
+        uncompressedSize: number;
+        dosTime: number;
+        dosDate: number;
+        bytes: Buffer;
+      }
+    | undefined {
+    const entry = this.findEntry(name);
+    if (!entry || this.overrides.has(normalizeZipPath(name))) {
+      return undefined;
+    }
+    const range = this.localDataRange(entry);
+    return {
+      name: entry.name,
+      method: entry.method,
+      crc: entry.crc,
+      compressedSize: entry.compressedSize,
+      uncompressedSize: entry.uncompressedSize,
+      dosTime: entry.dosTime,
+      dosDate: entry.dosDate,
+      bytes: this.data.subarray(range.start, range.end),
+    };
+  }
+
+  /** Register an edited (text) entry shadowing the original file content. */
+  setOverride(name: string, content: string): void {
+    const key = normalizeZipPath(name);
+    this.overrides.set(key, content);
+    this.textCache.delete(key);
+  }
+
+  /** Edited text of an entry, when one is registered. */
+  overrideText(name: string): string | undefined {
+    return this.overrides.get(normalizeZipPath(name));
+  }
+
+  hasOverride(name: string): boolean {
+    return this.overrides.has(normalizeZipPath(name));
+  }
+
+  clearOverrides(): void {
+    this.overrides.clear();
+    this.textCache.clear();
+  }
+
   /** Read an entry and decode it as text (BOM + XML declaration aware). */
   readText(name: string): string {
     const key = normalizeZipPath(name);
+    const override = this.overrides.get(key);
+    if (override !== undefined) {
+      return override;
+    }
     const cached = this.textCache.get(key);
     if (cached !== undefined) {
       return cached;

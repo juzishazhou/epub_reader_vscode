@@ -1,5 +1,8 @@
 import type { TocEntry } from "../epub/book";
 
+/** The custom editor's view type, shared by the provider and the sessions. */
+export const READER_VIEW_TYPE = "epubReader.reader";
+
 export type PageTheme = "auto" | "light" | "sepia" | "dark";
 
 export interface ReaderSettings {
@@ -27,6 +30,8 @@ export interface HighlightRequest {
 
 export interface ChapterPayload {
   index: number;
+  /** In-zip path of the chapter document, so the client can ask to edit it. */
+  path: string;
   title: string;
   body: string;
   css: string[];
@@ -34,6 +39,14 @@ export interface ChapterPayload {
   fragment?: string;
   /** Present when the chapter was opened from a search hit. */
   highlight?: { query: string; occurrence: number; found: boolean };
+}
+
+/** One file the edit panel may open. */
+export interface EditableEntryDto {
+  path: string;
+  /** Spine chapters get the visual editor; everything else is source-only. */
+  isChapter: boolean;
+  label: string;
 }
 
 export interface BookmarkDto {
@@ -76,6 +89,14 @@ export type HostToWebviewMessage =
       bookmarks: BookmarkDto[];
       progress?: ProgressDto;
       startChapter: number;
+      /** False when `epubReader.enableEditing` turns the editor read-only. */
+      editingEnabled?: boolean;
+      /**
+       * True when the surface must be re-rendered from this payload (a save,
+       * an undo, or an edit from another panel). Edit panels use it to know
+       * whether their in-progress DOM has to be rebuilt.
+       */
+      forceRender?: boolean;
     }
   | { type: "chapter"; chapter: ChapterPayload }
   | { type: "chapterError"; index: number; message: string }
@@ -83,7 +104,23 @@ export type HostToWebviewMessage =
   | { type: "searchResults"; results: SearchResultsDto }
   | { type: "settings"; settings: ReaderSettings }
   | { type: "toast"; level: "info" | "warn" | "error"; message: string }
-  | { type: "fatal"; message: string };
+  | { type: "fatal"; message: string }
+  /** Every file the edit panel may open. */
+  | { type: "editEntries"; entries: EditableEntryDto[] }
+  /**
+   * Content for the edit panel: `visual` carries the fidelity render of a
+   * spine chapter (editable markup plus stylesheets), `source` carries the
+   * raw text of any other entry.
+   */
+  | {
+      type: "editContent";
+      path: string;
+      kind: "visual" | "source";
+      body?: string;
+      css?: string[];
+      content?: string;
+    }
+  | { type: "editApplied"; path: string; dirty: boolean };
 
 export type WebviewToHostMessage =
   | { type: "ready" }
@@ -101,4 +138,12 @@ export type WebviewToHostMessage =
   | { type: "removeBookmark"; id: string }
   | { type: "updateSetting"; key: keyof ReaderSettings; value: number | string | boolean }
   | { type: "openExternal"; url: string }
-  | { type: "clientError"; message: string };
+  | { type: "clientError"; message: string }
+  /** Open an entry in the edit panel (defaults to the current chapter). */
+  | { type: "requestEdit"; path?: string; source?: boolean }
+  /** Submit edited markup (visual) or text (source) for one entry. */
+  | { type: "applyEdit"; path: string; content: string; visual: boolean }
+  /** Drop the edits of one entry, restoring what is on disk. */
+  | { type: "revertEdit"; path: string }
+  /** Ask VS Code to save the document (Ctrl+S inside the webview). */
+  | { type: "saveNow" };
