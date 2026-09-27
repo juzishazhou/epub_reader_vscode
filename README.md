@@ -34,11 +34,13 @@
 code --install-extension ssfg.epub-view
 ```
 
-**手动安装 VSIX**：从 [Releases](https://github.com/juzishazhou/epub_reader_vscode/releases) 下载 `.vsix` 后
+**手动安装 VSIX**：从 [Releases](https://github.com/juzishazhou/epub_reader_vscode/releases) 下载最新的 `.vsix` 后（文件名里是版本号）
 
 ```powershell
-code --install-extension epub-view-0.1.1.vsix
+code --install-extension epub-view-0.2.1.vsix   # 换成你下载到的文件名
 ```
+
+装完执行一次 **`Developer: Reload Window`**，扩展才会生效。
 
 ## 打开一本书
 
@@ -117,6 +119,9 @@ code --install-extension epub-view-0.1.1.vsix
 
 **支持多大的书？**
 实测 9.9 MB / 1660 章的 EPUB：打开 0.1–0.2 秒，全书建索引 0.3–0.9 秒。索引按需建立，首次搜索会显示进度提示。
+
+**编辑后保存报「No custom document found」？**
+这是 VS Code 在窗口重载后恢复标签页时会丢掉它内部的文档登记造成的。0.2.1 起扩展会自动降级：编辑照常写入草稿，`Ctrl+S` 直接写文件不会丢，并提示一次「保存并重新打开」。想彻底恢复（连同撤销栈），关掉这本书再打开即可。
 
 **编辑会不会把书改坏？**
 保存时只重压缩改动过的条目，其余 1664 个条目按原始压缩字节原样复制，`mimetype` 仍是首个且不压缩；编辑内容只替换 `<body>` 内部，其余部分逐字节保留。仓库里的真实书籍用例会逐个比对每个条目的解压内容与压缩字节。
